@@ -1,5 +1,7 @@
 // 13/06/13
 // 30/05/16
+// You will need the KymoResliceWide plugin from Eugene Katrukha
+// https://github.com/ekatrukha/KymoResliceWide
 
 macro "Generate Kymos" {
 
