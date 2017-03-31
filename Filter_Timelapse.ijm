@@ -17,6 +17,8 @@ macro "Filter Timelapse" {
 	NORM_DEF = false;
 	NORM_SNR_DEF = 3; // SNR for the Normalize_Movie macro
 	STABILIZE_DEF = true;
+	FTIM_DEF = false;
+	FINT_DEF = 1;
 
 //*************** Dialog 1 : get the input images folder path *************** 
 
@@ -35,6 +37,8 @@ macro "Filter Timelapse" {
 	Dialog.addCheckbox("Normalize Intensity", NORM_DEF);
 	Dialog.addNumber("Normalize SNR", NORM_SNR_DEF);
 	Dialog.addCheckbox("Stabilize", STABILIZE_DEF);
+	Dialog.addCheckbox("Force time interval", FTIM_DEF);
+	Dialog.addNumber("Interval", FINT_DEF, 5, 3, "sec");
 	Dialog.show();
 	
 //	Feeding variables from dialog choices
@@ -44,6 +48,8 @@ macro "Filter Timelapse" {
 	NORM = Dialog.getCheckbox();
 	NORM_SNR = Dialog.getNumber();
 	STABILIZE = Dialog.getCheckbox();
+	FTIM = Dialog.getCheckbox();
+	FINT = Dialog.getNumber();	
 
 //*********************************************		
 
@@ -89,6 +95,9 @@ macro "Filter Timelapse" {
 
 			STACK_ID = getImageID();
 			Stack.getDimensions(IM_W, IM_H, STACK_CH, STACK_SLICES, STACK_FRAMES);
+			getPixelSize(pixelUnit, pixelWidth, pixelHeight);
+			TIME_INT = Stack.getFrameInterval();
+			Stack.getUnits(X, Y, Z, timeUnit, Value);
 			STACK_TITLE = getTitle();
 
 			if (SUBTRACT == true) {
@@ -164,9 +173,23 @@ macro "Filter Timelapse" {
 				selectImage(RGB_ID);
 				close();
 				Stack.setChannel(3);
-				run("Delete Slice", "delete=channel");		
+				run("Delete Slice", "delete=channel");
+				Stack.getDimensions(currW, currH, currC, currS, currF);
+				run("Stack to Hyperstack...", "order=xyczt(default) channels=" + currC + " slices=" + currF + " frames=" + currS + " display=Composite");		
 
 			}
+			
+			if (FTIM == true){
+				setVoxelSize(pixelWidth, pixelHeight, FINT, pixelUnit);
+				Stack.setFrameInterval(FINT); 
+				Stack.setTUnit(timeUnit);
+			}
+			else {
+				setVoxelSize(pixelWidth, pixelHeight, TIME_INT, pixelUnit);
+				Stack.setFrameInterval(TIME_INT);
+				Stack.setTUnit(timeUnit);
+			}
+			
 			
 			OUT_PATH = OUT_DIR + FILE_NAME;
 			save(OUT_PATH);
