@@ -5,13 +5,14 @@
 
 macro "Generate Kymos" {
 
-	K_WIDTH = 17;
+	K_WIDTH_DEF = 17;
 	TRACE_FOLDER_KEY = " guide";
 	MOVIES_FOLDER_KEY = " filt";
 	OUT_KEY = " kymo";
+	NCH_DEF = 2;
 
 	// Get the folder name 
-	INPUT_DIR = getDirectory("Select the raw movies folder");
+	INPUT_DIR = getDirectory("Select the movies folder");
 	print("\n\n\n*** Generate Kymos Log ***");
 	print("INPUT_DIR :" + INPUT_DIR);
 
@@ -21,6 +22,16 @@ macro "Generate Kymos" {
 	INPUT_SHORT = INPUT_SHORTA[0];
 	print("INPUT_DIRNAME :" + INPUT_DIRNAME);
 	print("INPUT_DIRPARENT :" + INPUT_DIRPARENT);
+
+	// Get Options
+	
+	Dialog.create("Generate Kymos Options");
+	Dialog.addNumber("Number of Channels", NCH_DEF);
+	Dialog.addNumber("Tracing width for kymograph", K_WIDTH_DEF);
+	Dialog.show();
+	
+	NCH = Dialog.getNumber();
+	K_WIDTH = Dialog.getNumber();
 
 	// Create Output Folder
 	OUTPUT_DIRNAME =  INPUT_SHORT + OUT_KEY;
@@ -35,9 +46,9 @@ macro "Generate Kymos" {
 
 	// Run NDF to ROI
 	TRACES_DIR = INPUT_DIRPARENT + File.separator + INPUT_SHORT + TRACE_FOLDER_KEY + File.separator;
-	run("Convert ndf to ROI", "select=[" + TRACES_DIR+ "] line=5 channel=1 keep=1");
 
-//  for multiCh run("Convert ndf to ROI", "select=[/Users/christo/Travail/Data Live/test/100X trac] line=1 channel=2 single keep=1");
+	if (NCH== 1) run("Convert ndf to ROI", "select=[" + TRACES_DIR+ "] line=5 channel=1 keep=1");
+	else run("Convert ndf to ROI", "select=[" + TRACES_DIR + "] line=5 channel=" + NCH + " single keep=1");
 
 	rename(INPUT_SHORT + " Traces");
 	TRACES_STACK = getImageID();
