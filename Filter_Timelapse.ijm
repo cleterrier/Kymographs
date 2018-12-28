@@ -17,7 +17,8 @@ macro "Filter Timelapse" {
 	UM_DEF = false;
 	NORM_DEF = false;
 	NORM_SNR_DEF = 2; // SNR for the Normalize_Movie macro
-	STABILIZE_DEF = true;
+	STABILIZE_ARRAY = newArray("NanoJ", "Stablizer");
+	STABILIZE_DEF = "NanoJ";
 	FTIM_DEF = false;
 	FINT_DEF = 1;
 
@@ -37,7 +38,7 @@ macro "Filter Timelapse" {
 	Dialog.addCheckbox("Unsharp Mask", UM_DEF);
 	Dialog.addCheckbox("Normalize Intensity", NORM_DEF);
 	Dialog.addNumber("Normalize SNR", NORM_SNR_DEF);
-	Dialog.addCheckbox("Stabilize", STABILIZE_DEF);
+	Dialog.addChoice("Stabilize", STABILIZE_ARRAY, STABILIZE_DEF);
 	Dialog.addCheckbox("Force time interval", FTIM_DEF);
 	Dialog.addNumber("Interval", FINT_DEF, 5, 3, "sec");
 	Dialog.show();
@@ -48,7 +49,7 @@ macro "Filter Timelapse" {
 	UM = Dialog.getCheckbox();
 	NORM = Dialog.getCheckbox();
 	NORM_SNR = Dialog.getNumber();
-	STABILIZE = Dialog.getCheckbox();
+	STABILIZE = Dialog.getChoice();
 	FTIM = Dialog.getCheckbox();
 	FINT = Dialog.getNumber();
 
@@ -58,8 +59,6 @@ macro "Filter Timelapse" {
 	ALL_NAMES = getFileList(INPUT_DIR);
 	Array.sort(ALL_NAMES);
 	PARENT_DIR = File.getParent(INPUT_DIR);
-
-	if (STABILIZE == false) setBatchMode(true);
 
 //	Create the output folders
 	OUTPUT_NAME = File.getName(INPUT_DIR);
@@ -144,56 +143,20 @@ macro "Filter Timelapse" {
 				
 			}
 
-			if (STABILIZE == true) {
+			if (STABILIZE == "NanoJ") {
+				selectImage(STACK_ID);		
+				OUT_DRIFT = OUT_DIR + FILE_SHORTNAME + "_.njt";
+				//print(OUT_DRIFT);
+				run("Estimate Drift", "time=1 max=10 reference=[previous frame (better for live)] apply choose=[" + OUT_DRIFT + "]");
 				selectImage(STACK_ID);
-
-				/*
-				//First method: Stack Reg
-				Stack.setDisplayMode("composite");
-				for (ch = 0; ch < STACK_CH; ch++) {
-					resetMinAndMax;
-				}
-				run("Stack to RGB", "frames");
-				run("StackReg", "transformation=Translation");
-				run("Make Composite");
-				Stack.setChannel(3);
-				run("Delete Slice", "delete=channel");
-				*/
-
-				//Second method: SRRF
-				/*
-				for (ch = 0; ch < STACK_CH; ch++) {
-					setMinAndMax(0, 65535);
-				}
-				if (STACK_CH > 1) {
-					Stack.setDisplayMode("composite");
-					run("Stack to RGB", "frames");
-					RGB_ID = getImageID();
-					OUT_DRIFT = OUT_DIR + FILE_SHORTNAME + "_.njt";
-					//print(OUT_DRIFT);
-					run("Estimate Drift", "time=10 max=10 apply choose=[" + OUT_DRIFT + "]");
-					run("Make Composite");
-					selectImage(RGB_ID);
-					close();
-					Stack.setChannel(3);
-					run("Delete Slice", "delete=channel");
-					Stack.getDimensions(currW, currH, currC, currS, currF);
-					run("Stack to Hyperstack...", "order=xyczt(default) channels=" + currC + " slices=" + currF + " frames=" + currS + " display=Composite");
-				}
-				else {
-					OUT_DRIFT = OUT_DIR + FILE_SHORTNAME + "_.njt";
-					//print(OUT_DRIFT);
-					run("Estimate Drift", "time=10 max=10 apply choose=[" + OUT_DRIFT + "]");
-					//selectImage(STACK_ID);
-					close();
-				}
-				*/
+				close();
+			}
 				
-
-				// Third method: Image Stabilizer
+			if (STABILIZE == "Stabilizer") {	
 				
-				// reset contrast to project alll channels together for better drift correction
+				// reset contrast to project all channels together for better drift correction
 				for (ch = 0; ch < STACK_CH; ch++) {
+					if (STACK_CH > 1) Stack.setChannel(ch + 1);
 					setMinAndMax(0, 65535);
 				}
 
@@ -214,7 +177,7 @@ macro "Filter Timelapse" {
 					PROJ_ID = getImageID();
 					PROJ_TITLE = getTitle();
 
-					//Run Image Stabilizer on the projected channels, logging the coeeficients 
+					//Run Image Stabilizer on the projected channels, logging the coefficients 
 					run("Image Stabilizer", "transformation=Translation maximum_pyramid_levels=1 template_update_coefficient=0.90 maximum_iterations=200 error_tolerance=0.0000001 log_transformation_coefficients");
 					// Build the log window title
 					LOG_TITLE = replace(PROJ_TITLE, ".tif", ".log");
@@ -262,7 +225,9 @@ macro "Filter Timelapse" {
 				else {
 					run("Image Stabilizer", "transformation=Translation maximum_pyramid_levels=1 template_update_coefficient=0.90 maximum_iterations=200 error_tolerance=0.0000001");
 				}
+			}
 
+			
 			if (FTIM == true){
 				setVoxelSize(pixelWidth, pixelHeight, FINT, pixelUnit);
 				Stack.setFrameInterval(FINT);
@@ -274,6 +239,10 @@ macro "Filter Timelapse" {
 				Stack.setTUnit(timeUnit);
 			}
 
+			for (chan = 0; chan < STACK_CH; chan++) {
+				if (STACK_CH > 1) Stack.setChannel(chan + 1);
+				resetMinAndMax();
+			}
 
 			OUT_PATH = OUT_DIR + FILE_NAME;
 			save(OUT_PATH);
