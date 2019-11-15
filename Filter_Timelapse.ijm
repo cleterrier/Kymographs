@@ -13,12 +13,13 @@ macro "Filter Timelapse" {
 //	Default values for the Options Panel
 
 	SUBTRACT_DEF = false;
-	BG_DEF = false;
+	NORM_DEF = true;
+	NORM_SNR_DEF = 12; // SNR for the Normalize_Movie macro
+	BG_DEF = true;
+	DIA_DEF = 50;
 	UM_DEF = false;
-	NORM_DEF = false;
-	NORM_SNR_DEF = 2; // SNR for the Normalize_Movie macro
-	STABILIZE_ARRAY = newArray("NanoJ", "Stablizer");
-	STABILIZE_DEF = "NanoJ";
+	STABILIZE_ARRAY = newArray("None", "NanoJ", "Stabilizer");
+	STABILIZE_DEF = "Stabilizer";
 	FTIM_DEF = false;
 	FINT_DEF = 1;
 
@@ -34,10 +35,11 @@ macro "Filter Timelapse" {
 //	Creation of the dialog box
 	Dialog.create("Filter Timelapse Options");
 	Dialog.addCheckbox("Running subtraction", SUBTRACT_DEF);
-	Dialog.addCheckbox("Subtract background", BG_DEF);
-	Dialog.addCheckbox("Unsharp Mask", UM_DEF);
 	Dialog.addCheckbox("Normalize Intensity", NORM_DEF);
-	Dialog.addNumber("Normalize SNR", NORM_SNR_DEF);
+	Dialog.addNumber("Normalize SNR", NORM_SNR_DEF, 0, 4, "%");
+	Dialog.addCheckbox("Subtract background", BG_DEF);
+	Dialog.addNumber("Rolling ball diameter", DIA_DEF, 0, 4, "px");
+	Dialog.addCheckbox("Unsharp Mask", UM_DEF);
 	Dialog.addChoice("Stabilize", STABILIZE_ARRAY, STABILIZE_DEF);
 	Dialog.addCheckbox("Force time interval", FTIM_DEF);
 	Dialog.addNumber("Interval", FINT_DEF, 5, 3, "sec");
@@ -45,10 +47,11 @@ macro "Filter Timelapse" {
 
 //	Feeding variables from dialog choices
 	SUBTRACT = Dialog.getCheckbox();
-	BG = Dialog.getCheckbox();
-	UM = Dialog.getCheckbox();
 	NORM = Dialog.getCheckbox();
 	NORM_SNR = Dialog.getNumber();
+	BG = Dialog.getCheckbox();
+	DIA = Dialog.getNumber();
+	UM = Dialog.getCheckbox();
 	STABILIZE = Dialog.getChoice();
 	FTIM = Dialog.getCheckbox();
 	FINT = Dialog.getNumber();
@@ -78,7 +81,10 @@ macro "Filter Timelapse" {
 	for (n = 0; n < ALL_NAMES.length; n++) {
 
 		FILE_NAME = ALL_NAMES[n];
-		FILE_EXT = substring(FILE_NAME, lastIndexOf(FILE_NAME, "."), lengthOf(FILE_NAME));
+		if (lastIndexOf(FILE_NAME, ".") <0)
+			FILE_EXT = "folder";
+		else
+			FILE_EXT = substring(FILE_NAME, lastIndexOf(FILE_NAME, "."), lengthOf(FILE_NAME));
 
 		if (FILE_EXT == ".tif") {
 //			Get the file path
@@ -101,6 +107,7 @@ macro "Filter Timelapse" {
 			Stack.getUnits(X, Y, Z, timeUnit, Value);
 			STACK_TITLE = getTitle();
 
+
 			if (SUBTRACT == true) {
 				selectImage(STACK_ID);
 				run("Z Project...", "projection=[Average Intensity]");
@@ -120,29 +127,6 @@ macro "Filter Timelapse" {
 
 			}
 
-			if (BG == true) {
-				selectImage(STACK_ID);
-				run("Subtract Background...", "rolling=" + floor(IM_W / 10) + " sliding stack");
-			}
-
-			if (UM == true) {
-				selectImage(STACK_ID);
-				run("Unsharp Mask...", "radius=1 mask=0.30 stack");
-			}
-
-			if (NORM == true) {
-				for (ch = 0; ch < STACK_CH; ch++) {
-					if (STACK_CH > 1) Stack.setChannel(ch + 1);
-					run("Enhance Contrast...", "saturated=0.001");
-				}
-				run("Normalize Movie", "threshold=" + NORM_SNR + " initial=10");
-				resetMinAndMax;
-
-				rename(STACK_TITLE);
-				STACK_ID = getImageID();
-				
-			}
-
 			if (STABILIZE == "NanoJ") {
 				selectImage(STACK_ID);		
 				OUT_DRIFT = OUT_DIR + FILE_SHORTNAME + "_.njt";
@@ -151,16 +135,17 @@ macro "Filter Timelapse" {
 				selectImage(STACK_ID);
 				close();
 			}
-				
+			
 			if (STABILIZE == "Stabilizer") {	
 				
 				// reset contrast to project all channels together for better drift correction
+				selectImage(STACK_ID);
 				for (ch = 0; ch < STACK_CH; ch++) {
 					if (STACK_CH > 1) Stack.setChannel(ch + 1);
 					setMinAndMax(0, 65535);
 				}
 
-				// IN the case of multi-channel
+				// In the case of multi-channel
 				if (STACK_CH > 1) {
 
 					// duplicate input stack
@@ -195,7 +180,7 @@ macro "Filter Timelapse" {
 					// Go back to input stack
 					selectImage(STACK_ID);
 
-					// SPlit channels
+					// Split channels
 					run("Split Channels");
 
 					// Loop on channels to apply drift coefficients 
@@ -225,8 +210,61 @@ macro "Filter Timelapse" {
 				else {
 					run("Image Stabilizer", "transformation=Translation maximum_pyramid_levels=1 template_update_coefficient=0.90 maximum_iterations=200 error_tolerance=0.0000001");
 				}
+			}		
+
+			if (BG == true) {
+				selectImage(STACK_ID);
+				run("Subtract Background...", "rolling=" + DIA + " sliding stack");
 			}
 
+			if (NORM == true) {
+				selectImage(STACK_ID);
+				
+				if (STACK_CH > 1) {
+					// Split channels
+					run("Split Channels");
+					// Loop on channels to apply drift coefficients 
+					CH_TITLES = newArray(STACK_CH);
+					CH_STRING = "";
+					for (chan = 0; chan < STACK_CH; chan++) {
+						// Build the split channel window title
+						CH_TITLES[chan] = "C" + (chan + 1) + "-" + STACK_TITLE;
+						// Build the string that will be used to merge back the channels afterwards
+						CH_STRING = CH_STRING + "c" + (chan + 1) + "=" + CH_TITLES[chan] + " ";
+	
+						// Stabilize the channel using the logged drift coefficients
+						selectWindow (CH_TITLES[chan]);					
+						run("Enhance Contrast...", "saturated=0.01 normalize process_all use");
+						resetMinAndMax();		
+					}
+					// Merge back the channels into the source hyperstack, update title and ID
+					run("Merge Channels...", CH_STRING + "create ignore");
+					rename(STACK_TITLE);
+					STACK_ID = getImageID();
+				}
+
+				else {
+					run("Enhance Contrast...", "saturated=0.01 normalize process_all use");
+					resetMinAndMax();
+				}
+			}
+
+			if (NORM == true) {					
+				plugin_path = getDirectory("imagej") + "scripts";
+				norm_path = plugin_path + File.separator + "NeuroCyto" + File.separator + "Kymographs" + File.separator + "Normalize_Movie.ijm";
+				norm_args = "" + NORM_SNR + "," + "10"; 
+				done = runMacro(norm_path, norm_args);
+
+//				run("Normalize Movie", "threshold=" + NORM_SNR + " initial=10");
+//				rename(STACK_TITLE);
+//				STACK_ID = getImageID();
+			}
+
+
+			if (UM == true) {
+				selectImage(STACK_ID);
+				run("Unsharp Mask...", "radius=1 mask=0.30 stack");
+			}
 			
 			if (FTIM == true){
 				setVoxelSize(pixelWidth, pixelHeight, FINT, pixelUnit);
@@ -244,6 +282,7 @@ macro "Filter Timelapse" {
 				resetMinAndMax();
 			}
 
+			selectImage(STACK_ID);
 			OUT_PATH = OUT_DIR + FILE_NAME;
 			save(OUT_PATH);
 			close();
