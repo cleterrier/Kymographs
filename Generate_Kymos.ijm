@@ -6,6 +6,7 @@
 macro "Generate Kymos" {
 
 	K_WIDTH_DEF = 17;
+	ENH_DEF = 0.001;
 	TRACE_FOLDER_KEY = " guide";
 	MOVIES_FOLDER_KEY = " filt";
 	OUT_KEY = " kymo";
@@ -28,10 +29,12 @@ macro "Generate Kymos" {
 	Dialog.create("Generate Kymos Options");
 	Dialog.addNumber("Number of Channels", NCH_DEF);
 	Dialog.addNumber("Tracing width for kymograph", K_WIDTH_DEF);
+	Dialog.addNumber("Enhance Contrast (0 for none)", ENH_DEF);
 	Dialog.show();
 	
 	NCH = Dialog.getNumber();
 	K_WIDTH = Dialog.getNumber();
+	ENH = Dialog.getNumber();
 
 	// Create Output Folder
 	OUTPUT_DIRNAME =  INPUT_SHORT + OUT_KEY;
@@ -53,7 +56,7 @@ macro "Generate Kymos" {
 	rename(INPUT_SHORT + " Traces");
 	TRACES_STACK = getImageID();
 
-	setBatchMode(true);
+//	setBatchMode(true);
 
 	for (r = 0; r < roiManager("count"); r++) {
 		selectImage(TRACES_STACK);
@@ -79,14 +82,49 @@ macro "Generate Kymos" {
 			MOV_DIR = INPUT_DIRPARENT + File.separator + INPUT_SHORT + MOVIES_FOLDER_KEY + File.separator;
 			open(MOV_DIR + MOVNAME);
 			MOV_ID = getImageID();
+			// Store movie scale
+			
+			getPixelSize(mun, mpw, mph);
+			if (mun == "microns") mun = "um";
+			mfi = Stack.getFrameInterval();
+			// Remove scale from movie (for KymoResliceWide to work correctly)
+			run("Set Scale...", "distance=0 known=0 unit=pixels");
+			
+			Stack.getDimensions(mwi, mhe, mch, msl, mfr);
+			if (mch > 1) {
+				for (c= 0; c < mch; c++) {
+					Stack.setChannel(c+1);
+					resetMinAndMax();
+				}
+			}
+			else {
+				resetMinAndMax();
+			}
 		}
 		selectImage(MOV_ID);
 		roiManager("select", r);
 		roiManager("Set Line Width", K_WIDTH);
 		// run("Reslice [/]...", "output=1.000 start=Top avoid");
 		run("KymoResliceWide ", "intensity=Maximum");
-		run("Enhance Contrast...", "saturated=0.05 normalize");
-		outName = "Kymo_(" + MOVNAME + ")_roi" + IJ.pad(r,3) + "_[" + ROINAME_R + "]";
+		Stack.getDimensions(kwi, khe, kch, ksl, kfr); 
+		
+		if (ENH > 0) {
+			if (kch > 1) {
+				for (c= 0; c < kch; c++) {
+					Stack.setChannel(c+1);
+					resetMinAndMax();
+					run("Enhance Contrast...", "saturated=" + ENH);
+					run("Apply LUT");
+				}
+			}
+			else {
+				resetMinAndMax();
+				run("Enhance Contrast...", "saturated=" + ENH);
+				run("Apply LUT");
+			}
+		}
+		
+		outName = "Kymo_(" + MOVNAME + ")_roi" + IJ.pad(r+1,3) + "_[" + ROINAME_R + "]_" + mpw + mun + "," + mfi + "s";
 		rename(outName);
 		save (OUTPUT_DIR + outName + ".tif");
 		close();
