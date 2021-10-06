@@ -82,9 +82,9 @@ macro "Normalize_Movie" {
 //		Defines lower threshold limit as preset S/N ratio * background
 		Above_Thresh = SNR * (Max_Intensity - Image_Mode) /100;
 		Low_Thresh = Image_Mode + Above_Thresh;	
-		print("Image_Mode: " + Image_Mode);
-		print("Above_Thresh: " + Above_Thresh);
-		print("Low_Thres: " + Low_Thresh);
+//		print("Image_Mode: " + Image_Mode);
+//		print("Above_Thresh: " + Above_Thresh);
+//		print("Low_Thres: " + Low_Thresh);
 //		Defines higher threshold (255 or 65535 depending on bit depth)
 		High_Thresh = pow(2, bitDepth()) - 1;
 		setThreshold(Low_Thresh, High_Thresh);
@@ -124,11 +124,16 @@ macro "Normalize_Movie" {
 
 
 function getMode() {
-	// Return the mode (intensity value taken by the highest number of pixels in the image) 
-	getHistogram(Val, Histo, pow(2,bitDepth()));
+	// use number of values as bins or 16 bit values for 32 bits 
+	if (bitDepth() == 32) bins = 8;
+	else bins = bitDepth();
+	// Return the mode (intensity value taken by the highest number of pixels in the image)
+	if (bitDepth() == 32) getHistogram(Val, Histo, 256, 0, 1);
+	else getHistogram(Val, Histo, pow(2,bitDepth()));
 	// Sort the array by ascending rank of values
 	RankHisto = Array.rankPositions(Histo);
 	// So the mode is the last value of the sorted array
-	Mode=RankHisto[RankHisto.length-1];
+	Mode = RankHisto[RankHisto.length-1];
+	if (bitDepth() == 32) Mode= Mode / 256;
 	return Mode; 
 }

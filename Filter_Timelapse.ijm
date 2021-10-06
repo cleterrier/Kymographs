@@ -4,6 +4,7 @@
 // 14/10/16 calls the Normalize_Movie.ijm macro
 // 28/11/16 added options dialog
 // 06/06/18 revert to Stabilizer
+// 07/10/21 add Kota Miura's bleach correction algorithm
 
 macro "Filter Timelapse" {
 
@@ -13,11 +14,13 @@ macro "Filter Timelapse" {
 //	Default values for the Options Panel
 
 	SUBTRACT_DEF = false;
-	NORM_DEF = true;
+	BLEACH_ARRAY = newArray("None", "Simple ratio", "Exponential fitting", "Histogram matching", "Signal normalization");
+	BLEACH_DEF = "Histogram matching";
 	NORM_SNR_DEF = 12; // SNR for the Normalize_Movie macro
 	BG_DEF = true;
 	DIA_DEF = 50;
 	UM_DEF = false;
+	UMW_DEF = 0.4;
 	STABILIZE_ARRAY = newArray("None", "NanoJ", "Stabilizer");
 	STABILIZE_DEF = "Stabilizer";
 	FTIM_DEF = false;
@@ -35,24 +38,31 @@ macro "Filter Timelapse" {
 //	Creation of the dialog box
 	Dialog.create("Filter Timelapse Options");
 	Dialog.addCheckbox("Running subtraction", SUBTRACT_DEF);
-	Dialog.addCheckbox("Normalize Intensity", NORM_DEF);
-	Dialog.addNumber("Normalize SNR", NORM_SNR_DEF, 0, 4, "%");
+	Dialog.addMessage("");
+	Dialog.addChoice("Drift correction", STABILIZE_ARRAY, STABILIZE_DEF);
+	Dialog.addMessage("");
+	Dialog.addChoice("Bleach Correction", BLEACH_ARRAY, BLEACH_DEF);
+	Dialog.addNumber("normalization:", NORM_SNR_DEF, 0, 4, "% of signal");
+	Dialog.addMessage("");
 	Dialog.addCheckbox("Subtract background", BG_DEF);
-	Dialog.addNumber("Rolling ball diameter", DIA_DEF, 0, 4, "px");
-	Dialog.addCheckbox("Unsharp Mask", UM_DEF);
-	Dialog.addChoice("Stabilize", STABILIZE_ARRAY, STABILIZE_DEF);
+	Dialog.addNumber("ball diameter:", DIA_DEF, 0, 4, "px");
+	Dialog.addMessage("");
+	Dialog.addCheckbox("Unsharp mask", UM_DEF);
+	Dialog.addNumber("sharp weight:", UMW_DEF, 2, 5, "");
+	Dialog.addMessage("");
 	Dialog.addCheckbox("Force time interval", FTIM_DEF);
-	Dialog.addNumber("Interval", FINT_DEF, 5, 3, "sec");
+	Dialog.addNumber("interval:", FINT_DEF, 2, 5, "sec");
 	Dialog.show();
 
 //	Feeding variables from dialog choices
 	SUBTRACT = Dialog.getCheckbox();
-	NORM = Dialog.getCheckbox();
+	STABILIZE = Dialog.getChoice();
+	BLEACH = Dialog.getChoice();
 	NORM_SNR = Dialog.getNumber();
 	BG = Dialog.getCheckbox();
 	DIA = Dialog.getNumber();
 	UM = Dialog.getCheckbox();
-	STABILIZE = Dialog.getChoice();
+	UMW = Dialog.getNumber();
 	FTIM = Dialog.getCheckbox();
 	FINT = Dialog.getNumber();
 
@@ -217,47 +227,77 @@ macro "Filter Timelapse" {
 				run("Subtract Background...", "rolling=" + DIA + " sliding stack");
 			}
 
-			if (NORM == true) {
+			if (BLEACH != "None") {
 				selectImage(STACK_ID);
 				
-				if (STACK_CH > 1) {
-					// Split channels
-					run("Split Channels");
-					// Loop on channels to apply drift coefficients 
-					CH_TITLES = newArray(STACK_CH);
-					CH_STRING = "";
-					for (chan = 0; chan < STACK_CH; chan++) {
-						// Build the split channel window title
-						CH_TITLES[chan] = "C" + (chan + 1) + "-" + STACK_TITLE;
-						// Build the string that will be used to merge back the channels afterwards
-						CH_STRING = CH_STRING + "c" + (chan + 1) + "=" + CH_TITLES[chan] + " ";
-	
-						// Stabilize the channel using the logged drift coefficients
-						selectWindow (CH_TITLES[chan]);					
-						run("Enhance Contrast...", "saturated=0.01 normalize process_all use");
-						resetMinAndMax();		
+				if (BLEACH == "Signal normalization") {
+					if (STACK_CH > 1) {
+						// Split channels
+						run("Split Channels");
+						// Loop on channels to apply drift coefficients 
+						CH_TITLES = newArray(STACK_CH);
+						CH_STRING = "";
+						for (chan = 0; chan < STACK_CH; chan++) {
+							// Build the split channel window title
+							CH_TITLES[chan] = "C" + (chan + 1) + "-" + STACK_TITLE;
+							// Build the string that will be used to merge back the channels afterwards
+							CH_STRING = CH_STRING + "c" + (chan + 1) + "=" + CH_TITLES[chan] + " ";
+		
+							// Enhance contrast
+							selectWindow (CH_TITLES[chan]);					
+							run("Enhance Contrast...", "saturated=0.001 normalize process_all use");
+							resetMinAndMax();		
+						}
+						// Merge back the channels into the source hyperstack, update title and ID
+						run("Merge Channels...", CH_STRING + "create ignore");
+						rename(STACK_TITLE);
+						STACK_ID = getImageID();
 					}
-					// Merge back the channels into the source hyperstack, update title and ID
-					run("Merge Channels...", CH_STRING + "create ignore");
-					rename(STACK_TITLE);
-					STACK_ID = getImageID();
+	
+					else {
+						run("Enhance Contrast...", "saturated=0.001 normalize process_all use");
+						resetMinAndMax();
+					}
+
+					plugin_path = getDirectory("imagej") + "scripts";
+					norm_path = plugin_path + File.separator + "NeuroCyto" + File.separator + "Kymographs" + File.separator + "Normalize_Movie.ijm";
+					norm_args = "" + NORM_SNR + "," + "10"; 
+					done = runMacro(norm_path, norm_args);
+	
 				}
 
 				else {
-					run("Enhance Contrast...", "saturated=0.01 normalize process_all use");
-					resetMinAndMax();
+										
+				// These are the three modes of Kota Miura's Bleach Correction plugin
+					
+					if (BLEACH == "Simple ratio") {
+						Im_Mode = getMode();  // use image mode as background value
+						run("Bleach Correction", "correction=[Simple Ratio] background=" + Im_Mode);
+					}
+					
+					else if (BLEACH == "Exponential fitting") {
+						run("Bleach Correction", "correction=[Exponential Fit]");
+						selectWindow("y = a*exp(-bx) + c"); // close fit graph
+						close();
+					}
+					else if (BLEACH == "Histogram matching") {
+						run("Bleach Correction", "correction=[Histogram Matching]");
+					}
+				
+				
+				// Replace image by the result of bleach correction
+				BC_TITLE = getTitle();
+				BC_ID = getImageID();
+
+				selectImage(STACK_ID);
+				close();
+
+				selectImage(BC_ID);
+				rename(STACK_TITLE);
+				STACK_ID = getImageID();
+				
 				}
-			}
-
-			if (NORM == true) {					
-				plugin_path = getDirectory("imagej") + "scripts";
-				norm_path = plugin_path + File.separator + "NeuroCyto" + File.separator + "Kymographs" + File.separator + "Normalize_Movie.ijm";
-				norm_args = "" + NORM_SNR + "," + "10"; 
-				done = runMacro(norm_path, norm_args);
-
-//				run("Normalize Movie", "threshold=" + NORM_SNR + " initial=10");
-//				rename(STACK_TITLE);
-//				STACK_ID = getImageID();
+				
 			}
 
 
@@ -340,4 +380,19 @@ function Pad_Stack(ID, n) {
 
 	return AvStack_ID;
 
+}
+
+function getMode() {
+	// use number of values as bins or 16 bit values for 32 bits 
+	if (bitDepth() == 32) bins = 8;
+	else bins = bitDepth();
+	// Return the mode (intensity value taken by the highest number of pixels in the image)
+	if (bitDepth() == 32) getHistogram(Val, Histo, 256, 0, 1);
+	else getHistogram(Val, Histo, pow(2,bitDepth()));
+	// Sort the array by ascending rank of values
+	RankHisto = Array.rankPositions(Histo);
+	// So the mode is the last value of the sorted array
+	Mode = RankHisto[RankHisto.length-1];
+	if (bitDepth() == 32) Mode= Mode / 256;
+	return Mode; 
 }
