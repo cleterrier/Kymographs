@@ -23,6 +23,10 @@ macro "Filter Timelapse" {
 	UMW_DEF = 0.4;
 	STABILIZE_ARRAY = newArray("None", "NanoJ", "Stabilizer");
 	STABILIZE_DEF = "Stabilizer";
+	CLAHE_DEF = false;
+	CLAHE_BS_DEF = 97;
+	CLAHE_MAX_DEF = 2;
+	CLAHE_FAST_DEF = false;
 	FTIM_DEF = false;
 	FINT_DEF = 1;
 
@@ -50,6 +54,11 @@ macro "Filter Timelapse" {
 	Dialog.addCheckbox("Unsharp mask", UM_DEF);
 	Dialog.addNumber("sharp weight:", UMW_DEF, 2, 5, "");
 	Dialog.addMessage("");
+	Dialog.addCheckbox("CLAHE contrast enhancement", CLAHE_DEF);
+	Dialog.addNumber("CLAHE block size:", CLAHE_BS_DEF, 0, 5, "");
+	Dialog.addNumber("CLAHE max slope:", CLAHE_MAX_DEF, 2, 5, "");
+	Dialog.addCheckbox("CLAHE fast processing", CLAHE_FAST_DEF);
+	Dialog.addMessage("");
 	Dialog.addCheckbox("Force time interval", FTIM_DEF);
 	Dialog.addNumber("interval:", FINT_DEF, 2, 5, "sec");
 	Dialog.show();
@@ -63,6 +72,10 @@ macro "Filter Timelapse" {
 	DIA = Dialog.getNumber();
 	UM = Dialog.getCheckbox();
 	UMW = Dialog.getNumber();
+	CLAHE = Dialog.getCheckbox();
+	CLAHE_BS = Dialog.getNumber();
+	CLAHE_MAX = Dialog.getNumber();
+	CLAHE_FAST = Dialog.getCheckbox();
 	FTIM = Dialog.getCheckbox();
 	FINT = Dialog.getNumber();
 
@@ -142,8 +155,14 @@ macro "Filter Timelapse" {
 				OUT_DRIFT = OUT_DIR + FILE_SHORTNAME + "_.njt";
 				//print(OUT_DRIFT);
 				run("Estimate Drift", "time=1 max=10 reference=[previous frame (better for live)] apply choose=[" + OUT_DRIFT + "]");
+				DR_ID = getImageID();
+
 				selectImage(STACK_ID);
 				close();
+
+				selectImage(DR_ID);
+				rename(STACK_TITLE);
+				STACK_ID = getImageID();
 			}
 			
 			if (STABILIZE == "Stabilizer") {	
@@ -300,11 +319,30 @@ macro "Filter Timelapse" {
 				
 			}
 
+			if (CLAHE == true) {
+				
+				PARAM_STRING = "blocksize=" + CLAHE_BS + " histogram=256 maximum=" + CLAHE_MAX + " mask=*None*";
+				if (CLAHE_FAST == true)
+				  PARAM_STRING += " fast_(less_accurate)";
+				  
+				for (f = 1; f <= STACK_FRAMES; f++) {
+				  Stack.setFrame(f);
+				  for (s = 1; s <= STACK_SLICES; s++) {
+				    Stack.setSlice(s);
+				    for (c = 1; c <= STACK_CH; c++) {
+				      Stack.setChannel(c);
+				      run("Enhance Local Contrast (CLAHE)", PARAM_STRING);
+				    }
+				  }
+				}
+				
+			}
 
 			if (UM == true) {
 				selectImage(STACK_ID);
 				run("Unsharp Mask...", "radius=1 mask=0.30 stack");
 			}
+			
 			
 			if (FTIM == true){
 				setVoxelSize(pixelWidth, pixelHeight, FINT, pixelUnit);
