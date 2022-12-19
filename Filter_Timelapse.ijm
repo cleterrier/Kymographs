@@ -16,7 +16,10 @@ macro "Filter Timelapse" {
 	TEMPUP = 1; // template update factor for the Image Stabilizer. Default 0.9, sometimes better at 1.
 
 //	Default values for the Options Panel
-	SUBTRACT_DEF = false;
+
+	STABILIZE_ARRAY = newArray("None", "NanoJ", "Stabilizer", "Stabilizer (downscaled)");
+	STABILIZE_DEF = "Stabilizer (downscaled)";
+	DOWNSCALE_DEF = 2; // downscaling factor for stabilizer (downscaled) option
 	BLEACH_ARRAY = newArray("None", "Simple ratio", "Exponential fitting", "Histogram matching", "Signal normalization");
 	BLEACH_DEF = "Histogram matching";
 	NORM_SNR_DEF = 12; // SNR for the Normalize_Movie macro
@@ -24,11 +27,10 @@ macro "Filter Timelapse" {
 	DIA_DEF = 50;
 	UM_DEF = false;
 	UMW_DEF = 0.4;
-	STABILIZE_ARRAY = newArray("None", "NanoJ", "Stabilizer", "Stabilizer (downscaled)");
-	STABILIZE_DEF = "Stabilizer (downscaled)";
-	DOWNSCALE_DEF = 2; // downscaling factor for stabilizer (downscaled) option
+	SUBTRACT_DEF = false; // subtract the average intensity of the whole movie to each frame
 	FTIM_DEF = false;
 	FINT_DEF = 1;
+
 	
 //*************** Dialog 1 : get the input images folder path ***************
 
@@ -41,8 +43,7 @@ macro "Filter Timelapse" {
 
 //	Creation of the dialog box
 	Dialog.create("Filter Timelapse Options");
-	Dialog.addCheckbox("Running subtraction", SUBTRACT_DEF);
-	Dialog.addMessage("");
+
 	Dialog.addChoice("Drift correction", STABILIZE_ARRAY, STABILIZE_DEF);
 	Dialog.addNumber("Downscale factor:", DOWNSCALE_DEF, 0, 4, "X");
 	Dialog.addMessage("");
@@ -55,12 +56,14 @@ macro "Filter Timelapse" {
 	Dialog.addCheckbox("Unsharp mask", UM_DEF);
 	Dialog.addNumber("sharp weight:", UMW_DEF, 2, 5, "");
 	Dialog.addMessage("");
+	Dialog.addCheckbox("Average subtraction", SUBTRACT_DEF);
+	Dialog.addMessage("");
 	Dialog.addCheckbox("Force time interval", FTIM_DEF);
 	Dialog.addNumber("interval:", FINT_DEF, 2, 5, "sec");
 	Dialog.show();
 
 //	Feeding variables from dialog choices
-	SUBTRACT = Dialog.getCheckbox();
+
 	STABILIZE = Dialog.getChoice();
 	DOWNSCALE = Dialog.getNumber();
 	SCALEFACTOR = 1/DOWNSCALE;	
@@ -70,6 +73,7 @@ macro "Filter Timelapse" {
 	DIA = Dialog.getNumber();
 	UM = Dialog.getCheckbox();
 	UMW = Dialog.getNumber();
+	SUBTRACT = Dialog.getCheckbox();
 	FTIM = Dialog.getCheckbox();
 	FINT = Dialog.getNumber();
 
@@ -386,15 +390,15 @@ macro "Filter Timelapse" {
 					done = runMacro(norm_path, norm_args);
 
 					// Replace image by the result of bleach correction
-					BC_TITLE = getTitle();
-					BC_ID = getImageID();
+					// BC_TITLE = getTitle();
+					// BC_ID = getImageID();
 	
-					selectImage(STACK_ID);
-					close();
+					// selectImage(STACK_ID);
+					// close();
 	
-					selectImage(BC_ID);
-					rename(STACK_TITLE);
-					STACK_ID = getImageID();
+					// selectImage(BC_ID);
+					// rename(STACK_TITLE);
+					// STACK_ID = getImageID();
 	
 				}
 
@@ -494,7 +498,27 @@ macro "Filter Timelapse" {
 				selectImage(STACK_ID);
 				run("Unsharp Mask...", "radius=1 mask=0.30 stack");
 			}
+
 			
+			if (SUBTRACT == true) {
+				selectImage(STACK_ID);
+				run("Z Project...", "projection=[Average Intensity]");
+				AV_ID = getImageID();
+				AV_TI = getTitle();
+
+				AVS_ID = Pad_Stack(AV_ID, STACK_FRAMES);
+				imageCalculator("Subtract stack", STACK_TITLE, "Padded");
+				run("Enhance Contrast...", "saturated=0.01 normalize process_all");
+
+				selectImage(AVS_ID);
+//				rename(STACK_TITLE + "_Padded");
+				close();
+
+				selectImage(AV_ID);
+				close();
+
+			}										
+																		
 			if (FTIM == true){
 				setVoxelSize(pixelWidth, pixelHeight, FINT, pixelUnit);
 				Stack.setFrameInterval(FINT);
@@ -510,6 +534,7 @@ macro "Filter Timelapse" {
 				if (STACK_CH > 1) Stack.setChannel(chan + 1);
 				resetMinAndMax();
 			}
+
 
 			selectImage(STACK_ID);
 			OUT_PATH = OUT_DIR + FILE_NAME;
