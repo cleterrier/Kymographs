@@ -17,7 +17,7 @@ macro "Filter Timelapse" {
 
 //	Default values for the Options Panel
 
-	STABILIZE_ARRAY = newArray("None", "NanoJ", "Stabilizer", "Stabilizer (downscaled)");
+	STABILIZE_ARRAY = newArray("None", "NanoJ", "HyperStackReg", "Stabilizer", "Stabilizer (downscaled)");
 	STABILIZE_DEF = "Stabilizer (downscaled)";
 	DOWNSCALE_DEF = 2; // downscaling factor for stabilizer (downscaled) option
 	BLEACH_ARRAY = newArray("None", "Simple ratio", "Exponential fitting", "Histogram matching", "Signal normalization");
@@ -25,6 +25,10 @@ macro "Filter Timelapse" {
 	NORM_SNR_DEF = 12; // SNR for the Normalize_Movie macro
 	BG_DEF = false;
 	DIA_DEF = 50;
+	CLAHE_DEF = false;
+	CLAHE_BS_DEF = 97;
+	CLAHE_MAX_DEF = 2;
+	CLAHE_FAST_DEF = false;
 	UM_DEF = false;
 	UMW_DEF = 0.4;
 	SUBTRACT_DEF = false; // subtract the average intensity of the whole movie to each frame
@@ -53,6 +57,11 @@ macro "Filter Timelapse" {
 	Dialog.addCheckbox("Subtract background", BG_DEF);
 	Dialog.addNumber("ball diameter:", DIA_DEF, 0, 4, "px");
 	Dialog.addMessage("");
+	Dialog.addCheckbox("CLAHE contrast enhancement", CLAHE_DEF);
+	Dialog.addNumber("CLAHE block size:", CLAHE_BS_DEF, 0, 5, "");
+	Dialog.addNumber("CLAHE max slope:", CLAHE_MAX_DEF, 2, 5, "");
+	Dialog.addCheckbox("CLAHE fast processing", CLAHE_FAST_DEF);
+	Dialog.addMessage("");
 	Dialog.addCheckbox("Unsharp mask", UM_DEF);
 	Dialog.addNumber("sharp weight:", UMW_DEF, 2, 5, "");
 	Dialog.addMessage("");
@@ -71,6 +80,10 @@ macro "Filter Timelapse" {
 	NORM_SNR = Dialog.getNumber();
 	BG = Dialog.getCheckbox();
 	DIA = Dialog.getNumber();
+	CLAHE = Dialog.getCheckbox();
+	CLAHE_BS = Dialog.getNumber();
+	CLAHE_MAX = Dialog.getNumber();
+	CLAHE_FAST = Dialog.getCheckbox();
 	UM = Dialog.getCheckbox();
 	UMW = Dialog.getNumber();
 	SUBTRACT = Dialog.getCheckbox();
@@ -151,13 +164,37 @@ macro "Filter Timelapse" {
 				selectImage(STACK_ID);		
 				OUT_DRIFT = OUT_DIR + FILE_SHORTNAME + "_.njt";
 				//print(OUT_DRIFT);
-				run("Estimate Drift", "time=1 max=10 reference=[previous frame (better for live)] apply choose=[" + OUT_DRIFT + "]");
+				run("Estimate Drift", "time=1 max=50 reference=[previous frame (better for live)] apply choose=[" + OUT_DRIFT + "]");
 				DR_ID = getImageID();
 
 				selectImage(STACK_ID);
 				close();
 
 				selectImage(DR_ID);
+				rename(STACK_TITLE);
+				STACK_ID = getImageID();
+			}
+			
+			if (STABILIZE == "HyperStackReg") {				
+				selectImage(STACK_ID);
+				
+				// Select all channels for drift correction
+				CH_STRING = "";
+				for (c = 0; c < STACK_CH; c++) {
+					CH_STRING = CH_STRING + "channel" + (c+1);
+				}
+				
+				// Correct drift with HyperStackReg
+				run("HyperStackReg ", "transformation=[Rigid Body] " + CH_STRING);
+				// run("HyperStackReg ", "transformation=[Rigid Body] channel2");
+				OUT_ID = getImageID();
+				
+				// close input stack
+				selectImage(STACK_ID);
+				close();
+				
+				// rename and re-ID output stack
+				selectImage(OUT_ID);	
 				rename(STACK_TITLE);
 				STACK_ID = getImageID();
 			}
@@ -493,6 +530,24 @@ macro "Filter Timelapse" {
 				}
 			}
 
+			if (CLAHE == true) {
+				
+				PARAM_STRING = "blocksize=" + CLAHE_BS + " histogram=" + 256 +" maximum=" + CLAHE_MAX + " mask=*None*";
+				if (CLAHE_FAST == true)
+				  PARAM_STRING += " fast_(less_accurate)";
+				  
+				for (f = 1; f <= STACK_FRAMES; f++) {
+				  Stack.setFrame(f);
+				  for (s = 1; s <= STACK_SLICES; s++) {
+				    Stack.setSlice(s);
+				    for (c = 1; c <= STACK_CH; c++) {
+				      Stack.setChannel(c);
+				      run("Enhance Local Contrast (CLAHE)", PARAM_STRING);
+				    }
+				  }
+				}
+				
+			}
 
 			if (UM == true) {
 				selectImage(STACK_ID);
