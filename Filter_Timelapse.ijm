@@ -511,7 +511,11 @@ macro "Filter Timelapse" {
 							close();
 						}
 
-						else if (BLEACH == "Histogram matching") {
+						else if (BLEACH == "Histogram matching") { 
+							if (bitDepth()==32) { // this doesn't work with 32-bit images (output of SIM)
+								resetMinAndMax();
+								run("16-bit"); 
+							}
 							run("Bleach Correction", "correction=[Histogram Matching]");
 						}
 						resetMinAndMax();
