@@ -475,6 +475,10 @@ macro "Filter Timelapse" {
 							}
 
 							else if (BLEACH == "Histogram matching") {
+								if (bitDepth()==32) { // this doesn't work with 32-bit images (output of SIM)
+									resetMinAndMax();
+									run("16-bit"); 
+								}
 								run("Bleach Correction", "correction=[Histogram Matching]");
 							}
 							resetMinAndMax();
@@ -540,12 +544,18 @@ macro "Filter Timelapse" {
 				if (CLAHE_FAST == true)
 				  PARAM_STRING += " fast_(less_accurate)";
 				  
+				total = STACK_FRAMES * STACK_SLICES * STACK_CH;
+				iter = 0;
+				
 				for (f = 1; f <= STACK_FRAMES; f++) {
 				  Stack.setFrame(f);
 				  for (s = 1; s <= STACK_SLICES; s++) {
 				    Stack.setSlice(s);
 				    for (c = 1; c <= STACK_CH; c++) {
 				      Stack.setChannel(c);
+				      iter++;
+				      progress = iter / total;
+				      showProgress(progress);
 				      run("Enhance Local Contrast (CLAHE)", PARAM_STRING);
 				    }
 				  }

@@ -76,8 +76,9 @@ macro "Generate Kymos" {
 				close(); 
 			}
 			selectImage(TRACES_STACK);
-			SLICENAME = getInfo("slice.label");
-			MOVNAME = substring(SLICENAME, 0, lengthOf(SLICENAME)-4) + ".tif";
+			SLICENAME = getInfo("slice.label");			
+			MOVNAME = replace(SLICENAME, "-C=.", "");
+			if (indexOf(MOVNAME, ".tif")<0) MOVNAME = MOVNAME + ".tif";
 			print("r=" + r + " MOVNAME=" + MOVNAME);
 			MOV_DIR = INPUT_DIRPARENT + File.separator + INPUT_SHORT + MOVIES_FOLDER_KEY + File.separator;
 			open(MOV_DIR + MOVNAME);

@@ -4,6 +4,7 @@ macro "Straight Correlation" {
 	FOLDER_NAME = "straight";
 	
 	WIDTH_DEF = 30; // width of line profile in pixels
+	CHAN_DEF = 0;
 	
 	setFont("Arial", 12, "regular, antialised, black");
 
@@ -25,8 +26,10 @@ macro "Straight Correlation" {
 	// Dialog for measurements option
 	Dialog.create(MACRO_NAME + " Options");
 	Dialog.addNumber("Line width (0 for keeping line ROI width)", WIDTH_DEF, 0, 4, "px");
+	Dialog.addNumber("Channel to process", CHAN_DEF, 0, 4, "");
 	Dialog.show();
 	WIDTH = Dialog.getNumber();
+	CHAN = Dialog.getNumber();
 	
 	// Get the ROI number in the ROI manager
 	ROI_NUMBER = roiManager("count");
@@ -64,6 +67,9 @@ macro "Straight Correlation" {
 		
 		// Get image title, slice number and ROI name
 		IM_TITLE = getInfo("slice.label");
+		IM_TITLE = replace(IM_TITLE, "-C=.", "");
+		if (indexOf(IM_TITLE, ".tif")<0) IM_TITLE = IM_TITLE + ".tif";
+		
 		IM_NUMBER = getSliceNumber();		
 		ROI_TITLE = getInfo("selection.name");
 		
@@ -75,14 +81,21 @@ macro "Straight Correlation" {
 		else ROI_WIDTH = WIDTH;	
 		
 		// Build timelapse file name
-		TL_PATH = TL_DIR + IM_TITLE + ".tif";
+		TL_PATH = TL_DIR + IM_TITLE;
 		
 		// Open timelapse file, if it's not the same as the previous one
-		if (isOpen(IM_TITLE + ".tif") == false && i>0) {
+		if (isOpen(IM_TITLE) == false && i>0) {
 			print("      opening timelapse file: " + TL_PATH);	
 			selectImage(TL_ID);
 			close();
 			open(TL_PATH);
+			IN_ID = getImageID();
+			Stack.getDimensions(width, height, channels, slices, frames);
+			if (channels > 1){
+				run("Duplicate...", "duplicate channels=" + (CHAN+1));
+				selectImage(IN_ID);
+				close();
+			}
 			TL_ID = getImageID();
 		}
 		
@@ -94,6 +107,13 @@ macro "Straight Correlation" {
 		else {
 			print("      opening timelapse file: " + TL_PATH);
 			open(TL_PATH);
+			IN_ID = getImageID();
+			Stack.getDimensions(width, height, channels, slices, frames);
+			if (channels > 1){
+				run("Duplicate...", "duplicate channels=" + (CHAN+1));
+				selectImage(IN_ID);
+				close();
+			}
 			TL_ID = getImageID();
 		}
 		
@@ -109,7 +129,7 @@ macro "Straight Correlation" {
 		STRAIGHT_ID = getImageID();
 		
 		// Save straightened timelpase
-		STRAIGHT_PATH = OUTPUT_DIR + STRAIGHT_TITLE + ".tif";
+		STRAIGHT_PATH = OUTPUT_DIR + STRAIGHT_TITLE + "-C=" + CHAN + ".tif";
 		save(STRAIGHT_PATH);
 		print("      saved straightened timelapse: " + STRAIGHT_PATH);
 		

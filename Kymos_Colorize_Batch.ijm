@@ -96,6 +96,11 @@ macro "Kymos Colorize Batch" {
 				}
 			}
 			else {
+
+					//Select source image
+					inID = getImageID();
+					resetMinAndMax;
+
 					run("Kymo Colorize");
 					outID = getImageID();
 					selectImage(inID);
